@@ -3,28 +3,38 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Cards Against Humanity — Phaser Client</title>
+  <title>Cards Against Humanity</title>
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/phaser@3.55.2/dist/phaser.min.js"></script>
   <script src="ws_client.js"></script>
   <script src="main.js"></script>
 </head>
 <body>
-  <div id="ui">
-    <div id="player-row">
-      <div id="player-name-wrapper">
-        <input id="player_name" placeholder="Name (Alice)" value="Alice" />
+  <div id="landing" class="hero">
+    <div class="hero-inner">
+      <div class="hero-header">
+        <h1 class="hero-title">Cards Against Humanity</h1>
+        <p class="hero-sub">by Hiroshi Yatabe - FCGames</p>
+      </div>
+
+      <div class="hero-controls">
+        <div class="control-row">
+          <input id="player_name" placeholder="Seu nome (ex: Alice)" value="Alice" />
+        </div>
+        <div class="control-row control-actions">
+          <button id="btnCreate" class="btn">Criar Sala</button>
+          <button id="btnJoin" class="btn btn-primary">Entrar na Sala</button>
+        </div>
+        <div id="status" class="status-line">Status: desconectado</div>
       </div>
     </div>
-    <button id="btnCreate">Create Room</button>
-    <button id="btnJoin">Join Room</button>
-    <div id="status">Status: disconnected</div>
   </div>
   
   <!-- Create Room Modal -->
   <div id="createModal" class="modal hidden">
     <div class="modal-backdrop" id="modalBackdrop"></div>
     <div class="modal-card">
+      <button class="modal-close" id="modal_close_create" aria-label="Close">×</button>
       <h3>Create Room</h3>
       <p>Choose a room name to create (e.g. <code>room1</code>).</p>
       <input id="modal_room" placeholder="Room name" value="room1" />
@@ -39,17 +49,29 @@
   <div id="joinModal" class="modal hidden">
     <div class="modal-backdrop" id="joinBackdrop"></div>
     <div class="modal-card">
+      <button class="modal-close" id="modal_close_join" aria-label="Close">×</button>
       <h3>Join Room</h3>
-      <p>Select an active room to join (fetched from server).</p>
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-        <button id="join_refresh_btn">Refresh</button>
-        <div style="flex:1"></div>
+      <p>Select an active room to join (fetched from server) or connect directly by IP/port.</p>
+      <div class="card join-card-large" style="margin-top:4px;">
+        <button id="join_refresh_btn" class="icon-btn" aria-label="Refresh">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            <path d="M23 4v6h-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M1 20v-6h6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M3.51 9a9 9 0 0 1 14.13-3.36L23 10" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </button>
+        <div id="join_list" style="max-height:220px; overflow:auto; margin:8px 0;">
+          <!-- populated dynamically -->
+        </div>
       </div>
-      <div id="join_list" style="max-height:200px; overflow:auto; margin:8px 0;">
-        <!-- populated dynamically -->
+
+      <div style="display:flex;gap:8px;margin:12px 0;">
+        <input id="join_server_ip" placeholder="Server IP (ex: 192.168.0.5)" />
+        <input id="join_server_port" placeholder="Port (default 8000)" value="8000" style="width:120px" />
       </div>
-      <div style="display:flex;gap:8px;margin-top:8px;">
-        <button id="join_cancel_btn">Cancel</button>
+
+      <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+        <button id="join_enter_btn" class="btn btn-primary">Entrar no jogo</button>
       </div>
     </div>
   </div>

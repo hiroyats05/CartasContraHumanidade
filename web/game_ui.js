@@ -26,6 +26,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const handEl = document.getElementById('g_hand');
   const canvasEl = document.getElementById('g_canvas');
   const readyBtn = document.getElementById('g_btn_ready');
+  const exitBtn = document.getElementById('g_btn_exit');
 
   // generate or reuse a short player id
   if (!localStorage.getItem('playerId')) {
@@ -38,6 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const client = new WSClient(SERVER_URL);
   // guarda localmente em qual submissão eu votei (player id da submissão)
   let myVotedFor = null;
+  // keep ready state for this client
+  let amReady = false;
   client.addEventListener('status', (e) => {
     if (statusEl) statusEl.textContent = e.detail;
   });
@@ -65,26 +68,50 @@ document.addEventListener('DOMContentLoaded', () => {
   // Auto-join the room when the client connects on the game page.
   // This ensures the server maps the active WebSocket connection to the player id.
   let _hasAutoJoined = false;
+  let _joinAttempts = 0;
+  let _joinAck = false;
+  const MAX_JOIN_ATTEMPTS = 6;
+
+  function attemptAutoJoinOnce() {
+    try {
+      const r = getRoomFromQuery();
+      const pid = playerId;
+      const name = playerName;
+      console.debug('Auto-join attempt', _joinAttempts + 1, 'for', pid, 'room', r);
+      client.send({ action: 'join', room: r, player_id: pid, name });
+      _hasAutoJoined = true;
+      _joinAttempts += 1;
+      // schedule a follow-up attempt if no ack received
+      setTimeout(() => {
+        if (_joinAck) return; // we got confirmation via state
+        if (_joinAttempts < MAX_JOIN_ATTEMPTS) {
+          console.debug('No join ack yet, retrying join');
+          attemptAutoJoinOnce();
+        } else {
+          console.warn('Auto-join: max attempts reached');
+        }
+      }, 900);
+    } catch (err) { console.debug('Auto-join failed', err); }
+  }
+
   client.addEventListener('status', (e) => {
     if (e.detail === 'connected') {
-      try {
-        const r = getRoomFromQuery();
-        const pid = playerId;
-        const name = playerName;
-        if (!_hasAutoJoined) {
-          console.debug('Auto-joining room on game page', r, pid);
-          client.send({ action: 'join', room: r, player_id: pid, name });
-          _hasAutoJoined = true;
-        }
-      } catch (err) { console.debug('Auto-join failed', err); }
+      // reset attempts on fresh connect
+      _joinAttempts = 0;
+      _joinAck = false;
+      attemptAutoJoinOnce();
     } else if (e.detail === 'closed' || e.detail === 'error') {
       // allow re-join after reconnect
       _hasAutoJoined = false;
+      _joinAttempts = 0;
+      _joinAck = false;
     }
   });
 
   // Keep last fingerprint of our hand to avoid re-triggering deal animation
   let _prevYourHandFingerprint = null;
+  // Keep previous hand count so we can animate newly-drawn white cards
+  let _prevYourHandCount = 0;
 
   // prefer room from query string, fallback to state.room or modal input
   function getRoomFromQuery() {
@@ -106,6 +133,20 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wcountEl) wcountEl.textContent = String(state.white_deck_count || 0);
     if (bcountEl) bcountEl.textContent = String(state.black_deck_count || (state.black_card_text ? 1 : 0));
     const players = state.players || [];
+    // If our player id appears in the server state, mark join as acknowledged
+    try {
+      if (players.find(p => p.id === playerId)) {
+        _joinAck = true;
+      }
+    } catch (e) { /* ignore */ }
+
+    // update ready button visually based on server state
+    if (readyBtn) {
+      const isReady = (state.ready || []).includes(playerId);
+      amReady = Boolean(isReady);
+      readyBtn.textContent = amReady ? 'Unready' : 'Ready';
+      readyBtn.classList.toggle('ready', amReady);
+    }
 
     // submissions list in sidebar removed — voting is handled by clicking table cards
 
@@ -148,8 +189,75 @@ document.addEventListener('DOMContentLoaded', () => {
       }
       handContainer.appendChild(card);
     }
+    // append hand and then animate any newly drawn cards (if count increased)
     _prevYourHandFingerprint = fingerprint;
     handEl.appendChild(handContainer);
+    // if we received new cards compared to previous render, animate them from the deck
+    const prevCount = _prevYourHandCount || 0;
+    if (handCount > prevCount) {
+      const added = handCount - prevCount;
+      const children = handContainer.children;
+      // locate deck widget (white deck) inside canvas
+      const deckWidget = canvasEl.querySelector('.canvas-decks .white-deck') || document.querySelector('.canvas-decks .white-deck');
+      const deckRect = deckWidget ? deckWidget.getBoundingClientRect() : null;
+      for (let k = 0; k < added; k++) {
+        const j = handCount - added + k;
+        const cardEl = children[j];
+        if (!cardEl) continue;
+        // hide target card during fly animation
+        cardEl.classList.add('hidden-during-fly');
+        // schedule animation with slight stagger
+        setTimeout(() => {
+          // compute start (deck) and end (target) centers
+          let startX, startY;
+          if (deckRect) {
+            startX = deckRect.left + deckRect.width/2;
+            startY = deckRect.top + deckRect.height/2;
+          } else {
+            const cRect = canvasEl.getBoundingClientRect();
+            startX = cRect.left + cRect.width/2;
+            startY = cRect.top + 40; // fallback near top
+          }
+          const targetRect = cardEl.getBoundingClientRect();
+          const targetX = targetRect.left + targetRect.width/2;
+          const targetY = targetRect.top + targetRect.height/2;
+
+          // create flying card
+          const fly = document.createElement('div');
+          fly.className = 'card white fly-card';
+          const fcont = document.createElement('div');
+          fcont.className = 'content';
+          fcont.textContent = (myHandTexts[j] !== undefined) ? myHandTexts[j] : `Card ${j+1}`;
+          fly.appendChild(fcont);
+          // set initial position and size
+          const w = Math.max(targetRect.width, 80);
+          const h = Math.max(targetRect.height, 40);
+          fly.style.position = 'fixed';
+          fly.style.left = `${startX - w/2}px`;
+          fly.style.top = `${startY - h/2}px`;
+          fly.style.width = `${w}px`;
+          fly.style.height = `${h}px`;
+          fly.style.zIndex = '9999';
+          fly.style.pointerEvents = 'none';
+          document.body.appendChild(fly);
+          // force reflow
+          void fly.offsetWidth;
+          const dx = targetX - startX;
+          const dy = targetY - startY;
+          fly.style.transition = 'transform .6s cubic-bezier(.2,.9,.2,1), opacity .45s';
+          fly.style.transform = `translate(${dx}px, ${dy}px) scale(1)`;
+          fly.style.opacity = '1';
+          fly.addEventListener('transitionend', () => {
+            try { fly.remove(); } catch (e) {}
+            // reveal real card and add small arrival animation
+            cardEl.classList.remove('hidden-during-fly');
+            cardEl.classList.add('drawn');
+            cardEl.addEventListener('animationend', () => { cardEl.classList.remove('drawn'); }, { once: true });
+          }, { once: true });
+        }, k * 120);
+      }
+    }
+    _prevYourHandCount = handCount;
 
     // canvas area: show decks and large black card
     canvasEl.innerHTML = '';
@@ -342,12 +450,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // ready button toggles ready state (only if present)
   if (readyBtn) {
-    let amReady = false;
     readyBtn.addEventListener('click', () => {
       const r = getRoomFromQuery();
       amReady = !amReady;
       client.send({ action: 'ready', room: r, player_id: playerId, ready: amReady });
       readyBtn.textContent = amReady ? 'Unready' : 'Ready';
+      readyBtn.classList.toggle('ready', amReady);
+    });
+  }
+
+  // exit button returns to main menu (index.html)
+  if (exitBtn) {
+    exitBtn.addEventListener('click', () => {
+      try {
+        // navigate back to index (main menu)
+        window.location.href = 'index.html';
+      } catch (e) { console.debug('exit navigation failed', e); }
     });
   }
 

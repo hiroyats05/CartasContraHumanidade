@@ -44,6 +44,14 @@ class Deck:
                 return self.cards.pop(i)
         return None
 
+    def draw_random_black(self) -> Card | None:
+        """Remove and return a random black card from the deck, or None if none available."""
+        black_indices = [i for i, c in enumerate(self.cards) if c.type == CardType.BLACK]
+        if not black_indices:
+            return None
+        idx = random.choice(black_indices)
+        return self.cards.pop(idx)
+
     def add(self, card: Card) -> None:
         self.cards.append(card)
 

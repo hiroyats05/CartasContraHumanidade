@@ -31,6 +31,19 @@ def _sample_white_texts() -> List[str]:
         "Aids",
         "O mais sábio",
         "Molestar o Typero",
+        "Pirocojato",
+        "Derreto o modem",
+        "Bano o gabiru",
+        "Bicha",
+        "Pornografia infantil",
+        "Pornografia gay",
+        "comer merda",
+        "chopada da UERJ",
+        "Bacharel em dar a bunda",
+        "Abel ferreira",
+        "Palmeiras",
+        "Hugo Neneca",
+        "Molestado pelo Cred",
     ]
 
 
@@ -46,7 +59,25 @@ def _sample_black_texts() -> List[Tuple[str, int]]:
         ("O BlackNinja me baniu porque ____.", 1),
         ("O AGM CM acha que todos deveriamos ____", 1),
         ("O mais sábio do fcg é ____.", 1),
-        ("Vendo wandinha eu gosto de ____.", 1)
+        ("Vendo wandinha eu gosto de ____.", 1),
+        ("No premiere eu _____.", 1),
+        ("O Gabiru é _____.", 1),
+        ("A verdadeira razão do Cred ter molestado pelo Typero é ____.", 1),
+        ("O Tosknazi surpreendeu a todos com ____.", 1),
+        ("O SSD do Rodrishow está cheio de ____.", 1),
+        ("Meu almoço no ratão sempre inclui ____.", 1),
+        ("Para virar bichona, você precisa ____.", 1),
+        ("A razão do meu desmaio na academia foi ____.", 1),
+        ("O Cred é bicha por causa de ____.", 1),
+        ("Cred nunca sai sem ____.", 1),
+        ("Arthur Guilherme é conhecido por ____.", 1),
+        ("Rodrishow não vive sem ____.", 1),
+        ("Ver filme com Rodrigo sempre envolve ____.", 1),
+        ("Pizza na casa Menezes sempre tem ____.", 1),
+        ("Jean Escocês é especialista em ____.", 1),
+        ("Sujinho sempre carrega ____.", 1),
+        ("O Samuel devia _____.", 1),
+        ("O Typero é famoso por ser____.", 1),
     ]
 
 

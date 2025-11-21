@@ -18,6 +18,8 @@ class GameState:
         self.white_deck: Deck = white_deck
         self.black_deck: Optional[Deck] = black_deck
         self.discard: List[Card] = []
+        # descarte separado para cartas pretas (prompt cards)
+        self.black_discard: List[Card] = []
         self.turns: TurnManager = TurnManager([p.id for p in players])
         self.hand_size = hand_size
         self.started = False
@@ -57,16 +59,24 @@ class GameState:
         self.current_black_card: Optional[Card] = None
         if self.black_deck:
             try:
-                # draw the next black card (use draw_black which skips non-black)
-                maybe = self.black_deck.draw(1)
-                if maybe:
-                    self.current_black_card = maybe[0]
-                else:
-                    # fallback to draw_black which returns single card or None
-                    try:
-                        self.current_black_card = self.black_deck.draw_black()
-                    except Exception:
-                        self.current_black_card = None
+                # ensure black deck has cards (replenish from black_discard if needed)
+                try:
+                    self._replenish_black_if_needed()
+                except Exception:
+                    pass
+                # draw a random black card from the black deck so prompts are not predictable
+                try:
+                    self.current_black_card = self.black_deck.draw_random_black()
+                except Exception:
+                    # fallback to the older methods if random draw not available
+                    maybe = self.black_deck.draw(1)
+                    if maybe:
+                        self.current_black_card = maybe[0]
+                    else:
+                        try:
+                            self.current_black_card = self.black_deck.draw_black()
+                        except Exception:
+                            self.current_black_card = None
             except Exception:
                 self.current_black_card = None
 
@@ -99,6 +109,19 @@ class GameState:
             voter_ids = [p.id for p in self.players]
             self.voting = VotingSession(self.submissions, voters=voter_ids)
             self.voting_open = True
+
+    def _replenish_black_if_needed(self) -> None:
+        """Se o baralho preto estiver vazio e houver cartas no descarte preto, move-as de volta e embaralha."""
+        if self.black_deck is None:
+            return
+        if self.black_deck.is_empty() and self.black_discard:
+            try:
+                self.black_deck.add_many(self.black_discard)
+                self.black_deck.shuffle()
+                self.black_discard.clear()
+            except Exception:
+                # se algo falhar, garantimos que não levantamos exceção para o fluxo normal
+                pass
 
     def deal_one_to(self, player_id: str) -> None:
         player = self._get_player(player_id)
@@ -156,6 +179,34 @@ class GameState:
                         p.draw(self.white_deck, 1)
                 # incrementar o contador de rodadas
                 self.current_round += 1
+                # sortear uma nova carta preta para a próxima rodada (se houver baralho de pretas)
+                if self.black_deck:
+                    try:
+                        # tenta tirar aleatoriamente uma carta preta
+                        # antes de sortear, movemos a carta preta atual para o descarte (se existir)
+                        if getattr(self, 'current_black_card', None):
+                            try:
+                                self.black_discard.append(self.current_black_card)
+                            except Exception:
+                                pass
+                        try:
+                            # garantir reabastecimento se necessário
+                            try:
+                                self._replenish_black_if_needed()
+                            except Exception:
+                                pass
+                            self.current_black_card = self.black_deck.draw_random_black()
+                        except Exception:
+                            maybe = self.black_deck.draw(1)
+                            if maybe:
+                                self.current_black_card = maybe[0]
+                            else:
+                                try:
+                                    self.current_black_card = self.black_deck.draw_black()
+                                except Exception:
+                                    self.current_black_card = None
+                    except Exception:
+                        self.current_black_card = None
                 return winner_id
             else:
                 # empate -> abre uma nova rodada de votação apenas entre os empatados

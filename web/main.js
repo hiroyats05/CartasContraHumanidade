@@ -6,7 +6,13 @@ function _getServerHostFromQuery() {
     const srv = params.get('server') || params.get('host') || params.get('ws');
     if (srv) return srv;
   } catch (e) {}
-  if (window.location && window.location.host) return window.location.host;
+  try {
+    // In Electron the page is often loaded via file:// so location.host is empty.
+    // Default to localhost:8000 when running from file protocol so WS client connects
+    // to the bundled Python server started by Electron.
+    if (window.location && window.location.protocol === 'file:') return 'localhost:8000';
+    if (window.location && window.location.host) return window.location.host;
+  } catch (e) {}
   return 'localhost';
 }
 const SERVER_URL = (() => {
@@ -18,12 +24,23 @@ const SERVER_URL = (() => {
 
 window.addEventListener('load', () => {
   const nameInput = document.getElementById('player_name');
+  // legacy server input may not exist on the updated UI; prefer join modal fields
+  const serverInput = document.getElementById('server_addr');
+  const joinServerIpInput = document.getElementById('join_server_ip');
+  const joinServerPortInput = document.getElementById('join_server_port');
 
   // generate a short random player id (hidden from UI) used automatically
   function generatePlayerId() {
     return 'p' + Math.random().toString(36).substring(2, 8);
   }
   if (!window.playerId) window.playerId = generatePlayerId();
+  // try to prefill player name from localStorage
+  try {
+    const saved = localStorage.getItem('playerName');
+    if (saved && nameInput) nameInput.value = saved;
+    const savedServer = localStorage.getItem('serverAddr');
+    if (savedServer && serverInput) serverInput.value = savedServer;
+  } catch (e) {}
   const status = document.getElementById('status');
   const btnCreateEl = document.getElementById('btnCreate');
   const btnJoinEl = document.getElementById('btnJoin');
@@ -90,12 +107,38 @@ window.addEventListener('load', () => {
     modalRoomInput.focus();
   });
 
+  // enhance UX: pressing Enter in the name or room input triggers Join
+  function tryTriggerJoinOnEnter(e) {
+    if (e.key === 'Enter') {
+      const roomVal = (document.getElementById('modal_room') && document.getElementById('modal_room').value) ? document.getElementById('modal_room').value : document.getElementById('modal_room').value;
+      // simulate click on Join button
+      if (btnJoinEl) btnJoinEl.click();
+    }
+  }
+  if (nameInput) nameInput.addEventListener('keydown', tryTriggerJoinOnEnter);
+  const roomInputInline = document.getElementById('modal_room');
+  if (roomInputInline) roomInputInline.addEventListener('keydown', tryTriggerJoinOnEnter);
+
+  // helper to normalize user input into a websocket URL
+  function toWsUrl(raw) {
+    if (!raw) return null;
+    raw = raw.trim();
+    if (!raw) return null;
+    if (raw.startsWith('ws://') || raw.startsWith('wss://')) return raw;
+    if (raw.startsWith('http://')) return raw.replace(/^http:/, 'ws:') + '/ws';
+    if (raw.startsWith('https://')) return raw.replace(/^https:/, 'wss:') + '/ws';
+    const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
+    return `${proto}://${raw.replace(/\/$/, '')}/ws`;
+  }
+
   function closeModal() {
     modal.classList.add('hidden');
   }
 
   modalCancelBtn.addEventListener('click', closeModal);
   modalBackdrop.addEventListener('click', closeModal);
+  const modalCloseCreate = document.getElementById('modal_close_create');
+  if (modalCloseCreate) modalCloseCreate.addEventListener('click', closeModal);
   modalRoomInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') modalCreateBtn.click(); });
 
   modalCreateBtn.addEventListener('click', async () => {
@@ -104,19 +147,41 @@ window.addEventListener('load', () => {
     const pid = window.playerId;
     const name = nameInput.value || pid;
     try {
-      // send create and wait confirmation
-      console.debug('Requesting create room', r);
-      client.send({ action: 'create', room: r });
-      await waitForServerMessage(msg => msg.status === 'created' && msg.room === r, 5000);
+      // If an explicit server was entered (join modal IP/port), use it for the create request.
+      function getJoinExplicitServer() {
+        try {
+          const ip = joinServerIpInput && joinServerIpInput.value && joinServerIpInput.value.trim();
+          const port = joinServerPortInput && joinServerPortInput.value && joinServerPortInput.value.trim();
+          if (!ip) return null;
+          // include port if provided, otherwise default to 8000
+          return port ? `${ip.replace(/:\d+$/, '')}:${port}` : `${ip}:8000`;
+        } catch (e) { return null; }
+      }
+      const explicit = getJoinExplicitServer() || (serverInput && serverInput.value && serverInput.value.trim());
+      if (explicit) {
+        const wsUrl = toWsUrl(explicit);
+        try { localStorage.setItem('serverAddr', explicit); } catch (e) {}
+        console.debug('Requesting create room via explicit server', wsUrl, r);
+        const temp = new WSClient(wsUrl);
+        temp.connect();
+        await new Promise((resolve, reject) => {
+          const to = setTimeout(() => { try { temp.close(); } catch(e){}; reject(new Error('timeout')); }, 5000);
+          temp.addEventListener('status', (ev) => { if (ev.detail === 'connected') temp.send({ action: 'create', room: r }); });
+          const onMsg = (ev) => { const m = ev.detail; if (m && m.status === 'created' && m.room === r) { clearTimeout(to); temp.removeEventListener('message', onMsg); try { temp.close(); } catch(e){}; resolve(true); } };
+          temp.addEventListener('message', onMsg);
+        });
+      } else {
+        console.debug('Requesting create room', r);
+        client.send({ action: 'create', room: r });
+        await waitForServerMessage(msg => msg.status === 'created' && msg.room === r, 5000);
+      }
 
       // We created the room; save player info and navigate to game page.
-      // Do NOT send a `join` on this page because navigation will close the socket
-      // and the server will associate the player with the new connection when
-      // the game page performs the join on connect.
       status.textContent = 'Created ' + r;
       closeModal();
       try { localStorage.setItem('playerId', pid); localStorage.setItem('playerName', name); } catch (e) {}
-      window.location.href = `game.html?room=${encodeURIComponent(r)}`;
+      const navServer = explicit ? encodeURIComponent(explicit) : null;
+      window.location.href = `game.html?room=${encodeURIComponent(r)}` + (navServer ? `&server=${navServer}` : '');
     } catch (err) {
       console.error('Failed to create/join room:', err);
       status.textContent = 'Create failed: ' + (err.message || err);
@@ -128,88 +193,151 @@ window.addEventListener('load', () => {
   const joinCancelBtn = document.getElementById('join_cancel_btn');
   const joinBackdrop = document.getElementById('joinBackdrop');
 
+  function getJoinExplicitServerForRequest() {
+    try {
+      const ip = joinServerIpInput && joinServerIpInput.value && joinServerIpInput.value.trim();
+      const port = joinServerPortInput && joinServerPortInput.value && joinServerPortInput.value.trim();
+      if (!ip) return null;
+      return port ? `${ip.replace(/:\d+$/, '')}:${port}` : `${ip}:8000`;
+    } catch (e) { return null; }
+  }
+
   function openJoinModal() {
     joinModal.classList.remove('hidden');
+    // focus IP input for convenience
+    if (joinServerIpInput) joinServerIpInput.focus();
     joinList.innerHTML = '<div style="color:var(--muted)">Loading rooms&hellip;</div>';
     requestRoomList();
   }
 
   if (btnJoinEl) btnJoinEl.addEventListener('click', () => openJoinModal());
-  joinCancelBtn.addEventListener('click', () => joinModal.classList.add('hidden'));
+  if (joinCancelBtn) joinCancelBtn.addEventListener('click', () => joinModal.classList.add('hidden'));
   joinBackdrop.addEventListener('click', () => joinModal.classList.add('hidden'));
+  const modalCloseJoin = document.getElementById('modal_close_join');
+  if (modalCloseJoin) modalCloseJoin.addEventListener('click', () => joinModal.classList.add('hidden'));
 
   // request room list helper (used on open and refresh)
   function requestRoomList() {
     joinList.innerHTML = '<div style="color:var(--muted)">Loading rooms&hellip;</div>';
-      try {
-        console.debug('requestRoomList: ws readyState=', client.ws && client.ws.readyState, 'queueLen=', client._queue && client._queue.length);
-      } catch (e) { /* ignore if internals not present */ }
-      console.debug('requestRoomList: sending list request');
-      client.send({ action: 'list' });
+    const explicit = getJoinExplicitServerForRequest() || (serverInput && serverInput.value && serverInput.value.trim());
+    if (explicit) {
+      const wsUrl = toWsUrl(explicit);
+      try { localStorage.setItem('serverAddr', explicit); } catch (e) {}
+      console.debug('requestRoomList via explicit', wsUrl);
+      const temp = new WSClient(wsUrl);
+      temp.connect();
+      new Promise((resolve, reject) => {
+        const to = setTimeout(() => { try { temp.close(); } catch(e){}; reject(new Error('timeout')); }, 4000);
+        temp.addEventListener('status', (ev) => { if (ev.detail === 'connected') temp.send({ action: 'list' }); });
+        temp.addEventListener('message', (ev) => { const msg = ev.detail; if (msg && Array.isArray(msg.rooms)) { clearTimeout(to); try { temp.close(); } catch(e){}; resolve(msg); } });
+      }).then(msg => {
+        console.debug('Received rooms list', msg.rooms);
+        const raw = msg.rooms || [];
+        const rooms = raw.map(r => { if (typeof r === 'string') return { room: r, players: 0 }; return { room: r.room, players: r.players || 0 }; });
+        if (rooms.length === 0) { joinList.innerHTML = '<div style="color:var(--muted)">No active rooms</div>'; return; }
+        joinList.innerHTML = '';
+        rooms.forEach(r => {
+          const row = document.createElement('div');
+          row.className = 'join-row';
+          const name = document.createElement('div'); name.className = 'name'; name.textContent = `${r.room} (${r.players})`;
+          const btn = document.createElement('button'); btn.textContent = 'Join';
+          btn.addEventListener('click', async () => {
+            const pid = window.playerId;
+            const nameVal = nameInput.value || pid;
+            try {
+              try { localStorage.setItem('playerId', pid); localStorage.setItem('playerName', nameVal); } catch(e){}
+              const navServer = encodeURIComponent(explicit);
+              window.location.href = `game.html?room=${encodeURIComponent(r.room)}&server=${navServer}`;
+            } catch (err) { console.error('Join clicked error', err); status.textContent = 'Join failed'; }
+          });
+          row.appendChild(name); row.appendChild(btn); joinList.appendChild(row);
+        });
+      }).catch(() => { joinList.innerHTML = '<div style="color:var(--muted)">Failed to fetch rooms</div>'; console.debug('requestRoomList: failed to receive rooms (timeout or error)'); });
+      return;
+    }
+    try {
+      console.debug('requestRoomList: ws readyState=', client.ws && client.ws.readyState, 'queueLen=', client._queue && client._queue.length);
+    } catch (e) {}
+    console.debug('requestRoomList: sending list request');
+    client.send({ action: 'list' });
     waitForServerMessage(msg => Array.isArray(msg.rooms), 3000).then(msg => {
       console.debug('Received rooms list', msg.rooms);
       const raw = msg.rooms || [];
-      const rooms = raw.map(r => {
-        if (typeof r === 'string') return { room: r, players: 0 };
-        return { room: r.room, players: r.players || 0 };
-      });
-      if (rooms.length === 0) {
-        joinList.innerHTML = '<div style="color:var(--muted)">No active rooms</div>';
-        return;
-      }
+      const rooms = raw.map(r => { if (typeof r === 'string') return { room: r, players: 0 }; return { room: r.room, players: r.players || 0 }; });
+      if (rooms.length === 0) { joinList.innerHTML = '<div style="color:var(--muted)">No active rooms</div>'; return; }
       joinList.innerHTML = '';
       rooms.forEach(r => {
-        const row = document.createElement('div');
-        row.style.display = 'flex';
-        row.style.gap = '8px';
-        row.style.margin = '6px 0';
-        const name = document.createElement('div');
-        name.style.flex = '1';
-        name.textContent = `${r.room} (${r.players})`;
-        const btn = document.createElement('button');
-        btn.textContent = 'Join';
+        const row = document.createElement('div'); row.style.display = 'flex'; row.style.gap = '8px'; row.style.margin = '6px 0';
+        const name = document.createElement('div'); name.style.flex = '1'; name.textContent = `${r.room} (${r.players})`;
+        const btn = document.createElement('button'); btn.textContent = 'Join';
         btn.addEventListener('click', async () => {
-          const pid = window.playerId;
-          const nameVal = nameInput.value || pid;
-          try {
-            // Do not send join here because the page will navigate immediately.
-            try { localStorage.setItem('playerId', pid); localStorage.setItem('playerName', nameVal); } catch(e){}
+          const pid = window.playerId; const nameVal = nameInput.value || pid;
+          try { try { localStorage.setItem('playerId', pid); localStorage.setItem('playerName', nameVal); } catch(e){}
             window.location.href = `game.html?room=${encodeURIComponent(r.room)}`;
-          } catch (err) {
-            console.error('Join clicked error', err);
-            status.textContent = 'Join failed';
-          }
+          } catch (err) { console.error('Join clicked error', err); status.textContent = 'Join failed'; }
         });
-        row.appendChild(name);
-        row.appendChild(btn);
-        joinList.appendChild(row);
+        row.appendChild(name); row.appendChild(btn); joinList.appendChild(row);
       });
-    }).catch(() => {
-      joinList.innerHTML = '<div style="color:var(--muted)">Failed to fetch rooms</div>';
-        console.debug('requestRoomList: failed to receive rooms (timeout or error)');
-    });
+    }).catch(() => { joinList.innerHTML = '<div style="color:var(--muted)">Failed to fetch rooms</div>'; console.debug('requestRoomList: failed to receive rooms (timeout or error)'); });
   }
 
   // wire refresh button
   const joinRefreshBtn = document.getElementById('join_refresh_btn');
   if (joinRefreshBtn) joinRefreshBtn.addEventListener('click', requestRoomList);
+  // wire direct-enter button (connect by IP:port)
+  const joinEnterBtn = document.getElementById('join_enter_btn');
+  if (joinEnterBtn) joinEnterBtn.addEventListener('click', async () => {
+    const ip = joinServerIpInput && joinServerIpInput.value && joinServerIpInput.value.trim();
+    const port = joinServerPortInput && joinServerPortInput.value && joinServerPortInput.value.trim();
+    if (!ip) { status.textContent = 'Informe o IP do servidor.'; return; }
+    const explicit = port ? `${ip.replace(/:\d+$/, '')}:${port}` : `${ip}:8000`;
+    const wsUrl = toWsUrl(explicit);
+    status.textContent = `Conectando a ${explicit}...`;
+    const temp = new WSClient(wsUrl);
+    try {
+      temp.connect();
+      await new Promise((resolve, reject) => {
+        const to = setTimeout(() => { try { temp.close(); } catch(e){}; reject(new Error('timeout')); }, 5000);
+        temp.addEventListener('status', (ev) => { if (ev.detail === 'connected') { clearTimeout(to); resolve(true); } });
+      });
+      // success: save name/id and navigate
+      try { localStorage.setItem('playerId', window.playerId); localStorage.setItem('playerName', nameInput.value || window.playerId); } catch (e) {}
+      const navServer = encodeURIComponent(explicit);
+      window.location.href = `game.html?server=${navServer}`;
+    } catch (err) {
+      console.error('Failed to connect to server', err);
+      status.textContent = 'Falha ao conectar: ' + (err.message || err);
+    } finally {
+      try { temp.close(); } catch (e) {}
+    }
+  });
   if (btnStartEl) btnStartEl.addEventListener('click', () => {
     const modalRoom = document.getElementById('modal_room');
     const r = (modalRoom && modalRoom.value) ? modalRoom.value : 'room1';
     client.send({ action: 'start', room: r });
   });
 
-  // Phaser config
-  const config = {
-    type: Phaser.AUTO,
-    parent: 'canvas-container',
-    width: window.innerWidth,
-    height: window.innerHeight,
-    backgroundColor: '#222244',
-    scene: [LobbyScene, GameScene]
-  };
+  // Only initialize Phaser when on the game HTML page. This avoids rendering
+  // a full-screen canvas (and its background) on the index/landing page which
+  // was producing an undesirable centered band behind the hero card.
+  const isGamePage = window.location.pathname && window.location.pathname.indexOf('game.html') !== -1;
+  if (isGamePage) {
+    // Phaser config
+    const config = {
+      type: Phaser.AUTO,
+      parent: 'canvas-container',
+      width: window.innerWidth,
+      height: window.innerHeight,
+      backgroundColor: '#222244',
+      scene: [LobbyScene, GameScene]
+    };
 
-  const game = new Phaser.Game(config);
+    const game = new Phaser.Game(config);
+  } else {
+    // If not on the game page, hide the canvas container to avoid layout artifacts
+    const cc = document.getElementById('canvas-container');
+    if (cc) cc.style.display = 'none';
+  }
 
   // Expose a small API so main.js can call into game scenes
   window.phaserClient = { client };
@@ -218,9 +346,8 @@ window.addEventListener('load', () => {
 class LobbyScene extends Phaser.Scene {
   constructor() { super({ key: 'LobbyScene' }); }
   create() {
-    this.add.text(20, 20, 'Lobby (use the HTML controls)', { font: '20px Arial', fill: '#fff' });
-    this.add.text(20, 48, 'When the game starts, it will switch to the Game view.', { font: '14px Arial', fill: '#ddd' });
-    // listen for state messages to auto-transition
+    // Lobby UI is provided by the HTML overlay; keep the Phaser lobby scene empty
+    // to avoid duplicate text rendered inside the canvas.
     window.gameScene = this;
   }
   onServerMessage(msg) {

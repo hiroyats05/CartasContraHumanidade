@@ -1,0 +1,26 @@
+{
+  "name": "cards-against-humanity-electron",
+  "version": "0.1.0",
+  "description": "Wrapper Electron para o jogo Cards Against Humanity (Python + Web)",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "npx electron .",
+    "build": "npx electron-builder"
+  },
+  "build": {
+    "appId": "com.example.cah",
+    "files": [
+      "**/*"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^39.2.3",
+    "electron-builder": "^26.0.12"
+  }
+}

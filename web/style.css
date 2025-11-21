@@ -11,7 +11,8 @@ html,body{height:100%; width:100%;}
 body{
   margin:0;
   font-family: Inter, Roboto, Arial, Helvetica, sans-serif;
-  background: linear-gradient(180deg,var(--bg) 0%, #081024 100%);
+  /* simpler, even background to avoid a centered strip artifact */
+  background: linear-gradient(180deg, #07121a 0%, #041022 100%);
   color: #e6eef6;
   -webkit-font-smoothing:antialiased;
 }
@@ -31,7 +32,24 @@ body{
   backdrop-filter: blur(6px);
 }
 
-#ui input, #ui button{
+/* Hero / landing styles for index.html */
+.hero{ width:100%; height:100vh; display:flex; align-items:center; justify-content:center; background: linear-gradient(180deg,var(--bg) 0%, #041223 100%); }
+.hero-inner{ width:100%; max-width:820px; margin:0 20px; padding:24px; background: rgba(255,255,255,0.02); border-radius:12px; box-shadow: 0 12px 30px rgba(4,8,16,0.5); display:flex; gap:20px; align-items:center; }
+.hero-header{ flex:1; color:var(--card); }
+.hero-title{ margin:0 0 6px 0; font-size:30px; letter-spacing:-0.4px; line-height:1.02 }
+.hero-sub{ margin:0 0 12px 0; color:var(--muted); font-size:13px }
+.hero-controls{ width:360px; }
+.control-row{ margin-bottom:12px }
+.control-actions{ display:flex; gap:10px }
+.status-line{ margin-top:8px; color:var(--muted); font-size:13px }
+
+/* Generic button styles used across index/game UI */
+.btn{ display:inline-block; padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.04); background: linear-gradient(180deg,#0f1b28,#08121a); color:#eaf6f1; cursor:pointer; font-weight:700; transition: transform .12s ease, box-shadow .12s ease }
+.btn:hover{ transform: translateY(-2px); box-shadow: 0 8px 26px rgba(8,12,22,0.28) }
+.btn-primary{ background: linear-gradient(180deg,#2a6cff,#0d57c8); border-color: rgba(30,120,220,0.1); color:#fff; box-shadow: 0 8px 22px rgba(13,99,208,0.08) }
+
+
+#landing input, #landing button{
   width:100%;
   padding:10px 12px;
   margin:6px 0;
@@ -42,7 +60,7 @@ body{
   font-size:14px;
 }
 
-#ui button{
+#landing button{
   cursor:pointer;
   background: linear-gradient(180deg,#2b3748,#1b2431);
   border: 1px solid rgba(255,255,255,0.04);
@@ -51,6 +69,8 @@ body{
 #status{ margin-top:6px; font-size:13px; color:var(--accent); }
 
 #canvas-container{ position: absolute; inset:0; }
+/* ensure canvas container does not interfere with index layout when hidden */
+#canvas-container[style*="display: none"] { display: none !important }
 
 #player-row{ display:flex; gap:10px; align-items:center; }
 #player-name-wrapper{ flex:1 }
@@ -64,12 +84,40 @@ body{
 /* Modal styles */
 .hidden{ display:none }
 .modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:99999 }
-.modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.92); }
-.modal-card{ position:relative; z-index:100000; width:360px; max-width:calc(100% - 32px); padding:22px; background: #0b0f14; border-radius:12px; box-shadow:0 22px 60px rgba(0,0,0,0.85); border:1px solid rgba(255,255,255,0.04); }
+.modal-backdrop{ position:fixed; inset:0; background: rgba(6,10,18,0.56); backdrop-filter: blur(6px); }
+.modal-card{ position:relative; z-index:100000; width:420px; max-width:calc(100% - 40px); padding:20px; background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:12px; box-shadow:0 18px 40px rgba(2,6,18,0.6); border:1px solid rgba(255,255,255,0.04); transform: translateY(10px); opacity:0; transition: transform .18s ease, opacity .18s ease; }
+.modal:not(.hidden) .modal-card{ transform: translateY(0); opacity:1 }
 .modal-card h3{ margin:0 0 8px 0; font-size:18px }
 .modal-card p{ margin:0 0 10px 0; color:var(--muted); font-size:13px }
-.modal-card input{ width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.03); color:var(--card) }
-.modal-card button{ flex:1 }
+.modal-card input{ width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color:var(--card) }
+.modal-card .actions{ display:flex; gap:8px; margin-top:12px }
+.modal-card button{ flex:1; padding:10px 12px; border-radius:8px; }
+
+/* modal close button */
+.modal-close{ position:absolute; right:10px; top:10px; width:36px; height:36px; border-radius:8px; background: transparent; color:var(--muted); border:1px solid rgba(255,255,255,0.04); cursor:pointer; font-size:20px; line-height:1; display:flex; align-items:center; justify-content:center }
+.modal-close:hover{ background: rgba(255,255,255,0.02); color:var(--card) }
+
+/* Join list rows */
+#join_list{ width:100%; box-sizing:border-box }
+#join_list .join-row{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:8px 10px; border-radius:8px; background: rgba(255,255,255,0.01); margin-bottom:8px; }
+#join_list .join-row .name{ color:var(--card); font-weight:600; flex:1 1 auto; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+#join_list .join-row button{ padding:6px 12px; border-radius:6px; flex:0 0 auto; min-width:56px; }
+
+/* Ensure the card inside modals does not scale on hover and fits the modal width */
+.modal-card .card{ width:100%; max-width:100%; box-sizing:border-box; cursor:default; }
+.modal-card .card:hover{ transform: none; box-shadow: 0 10px 30px rgba(2,6,23,0.6); }
+
+/* Join card size and responsive cap */
+.join-card-large{ width:100%; max-width:520px; padding:18px 14px 16px 14px; box-sizing:border-box; min-height:200px }
+
+/* small icon button used for refresh inside the join card */
+.join-card-large{ position:relative }
+.join-card-large .icon-btn{ position: absolute; right:12px; top:10px; width:34px; height:34px; border-radius:8px; border:1px solid rgba(255,255,255,0.04); background: rgba(255,255,255,0.02); display:flex; align-items:center; justify-content:center; color:var(--muted); cursor:pointer }
+.join-card-large .icon-btn svg{ display:block; color:var(--muted) }
+.join-card-large .icon-btn:hover{ background: rgba(255,255,255,0.03); color:var(--card); border-color: rgba(255,255,255,0.08) }
+
+/* make room at top so icon doesn't overlap the list */
+.join-card-large #join_list{ margin-top:12px }
 
 /* ensure hidden state overrides modal display */
 .modal.hidden{ display:none !important }
@@ -81,6 +129,11 @@ body{
 #game-root{ height:100vh; display:flex; flex-direction:column; background: linear-gradient(180deg,#061025 0%, #07121a 100%); color:#e6eef6; }
 .game-topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 20px; background: rgba(0,0,0,0.18); border-bottom:1px solid rgba(255,255,255,0.03); }
 .game-topbar .left, .game-topbar .right{ display:flex; align-items:center; }
+.game-topbar .right .btn{ margin-left:10px; padding:8px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); font-weight:700; cursor:pointer; background: linear-gradient(180deg,#16202a,#0d1419); color:var(--card); }
+.game-topbar .right .btn:hover{ transform: translateY(-2px); }
+.game-topbar .right .btn.btn-exit{ background: linear-gradient(180deg,#6b2230,#4b121f); border-color: rgba(255,100,100,0.12); box-shadow: 0 6px 18px rgba(75,18,31,0.45); }
+.game-topbar .right .btn.btn-ready{ background: linear-gradient(180deg,#1f3b2f,#123023); border-color: rgba(110,231,183,0.12); box-shadow: 0 6px 18px rgba(24,64,48,0.45); color: var(--accent); }
+.game-topbar .right .btn.btn-ready.ready{ background: linear-gradient(180deg,#2dd38a,#10a86a); color:#042014; box-shadow: 0 10px 28px rgba(16,168,106,0.28); transform: translateY(-1px); }
 .game-main{ display:flex; flex:1; padding:18px; gap:18px; }
 .game-canvas{ flex:1; display:flex; align-items:center; justify-content:center; background: linear-gradient(180deg,#0a0f16, #07121a); border-radius:12px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); min-height:320px; overflow:visible }
 .game-canvas{ position:relative; }
@@ -105,6 +158,13 @@ body{
   from { transform: translateY(-36px) scale(.96); opacity: 0 }
   to { transform: translateY(0) scale(1); opacity: 1 }
 }
+
+/* animation for a single drawn card (from deck) */
+.card.drawn{ animation: deal-in .45s cubic-bezier(.2,.9,.2,1); }
+
+/* flying card (deck -> hand) */
+.fly-card{ position:fixed; border-radius:10px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); pointer-events:none; transform-origin:center center; }
+.hidden-during-fly{ opacity:0 !important }
 
 .hand-cards{ display:flex; gap:12px; align-items:center; padding:8px; }
 .hand-cards .card{ width:140px; height:86px; font-size:14px }
