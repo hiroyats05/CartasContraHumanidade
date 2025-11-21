@@ -1,62 +1,87 @@
-"""Demo rápido para executar a lógica do cardgame no desktop (console)."""
+"""Clean demo runner for the cardgame.
 
-from game.card import Card, CardType
+Run this as a replacement for a corrupted `run.py` file.
+"""
+
+from typing import Optional
+
+from game.card import Card
 from game.deck import Deck
 from game.player import Player
 from game.game_state import GameState
 from game.cards_data import make_cah_like_decks
 
 
-def make_standard_deck() -> tuple[Deck, Deck]:
-    # Returns (white_deck, black_deck)
-    return make_cah_like_decks()
+def _replicate_deck(deck: Deck, factor: int = 3) -> Deck:
+    cards = []
+    idx = 1
+    for _ in range(factor):
+        for c in deck.cards:
+            cards.append(Card(idx, c.text, type=c.type, blanks=getattr(c, "blanks", 0)))
+            idx += 1
+    return Deck(cards)
 
 
-def main() -> None:
-    white_deck, black_deck = make_standard_deck()
-    players = [Player("p1", "Alice"), Player("p2", "Bob")]
-    # Create a combined deck for GameState (white + black mixed is fine), but
-    # we'll draw black cards from the black_deck for prompts.
-    combined = Deck(list(white_deck.cards) + list(black_deck.cards))
-    gs = GameState(players, combined, hand_size=5)
+def play_game(mode: str, demo_limit_for_infinite: int = 5, hand_size: int = 5) -> None:
+    mode = mode.lower()
+    if mode == "quick":
+        max_rounds: Optional[int] = 10
+    elif mode == "long":
+        max_rounds = 30
+    elif mode == "infinite":
+        max_rounds = None
+    else:
+        raise ValueError("mode must be one of: quick, long, infinite")
+
+    white, black = make_cah_like_decks()
+    white = _replicate_deck(white, factor=5)
+    black = _replicate_deck(black, factor=5)
+
+    players = [Player("p1", "Alice"), Player("p2", "Bob"), Player("p3", "Carol")]
+    combined = Deck(list(white.cards) + list(black.cards))
+
+    gs = GameState(players, combined, hand_size=hand_size)
+    gs.max_rounds = max_rounds
     gs.start()
-    print("Initial snapshot:", gs.snapshot())
 
-    current = gs.turns.current()
-    print("Current turn:", current)
+    rounds = 0
+    while not gs.is_finished():
+        if mode == "infinite" and rounds >= demo_limit_for_infinite:
+            print(f"Stopping infinite demo after {demo_limit_for_infinite} rounds")
+            break
 
-    # Simula uma rodada típica: puxa um prompt (black card) e cada jogador
-    # submete uma carta branca.
-    black = black_deck.draw(1)
-    if not black:
-        print("No black cards available")
-        return
-    prompt = black[0]
-    print("Prompt:", prompt.text)
+        b = black.draw(1)
+        if not b:
+            print("No black card available; ending")
+            break
+        prompt = b[0]
+        print(f"Round {gs.current_round + 1} - Prompt: {prompt.text}")
 
-    for p in players:
-        # Para simplicidade do demo, cada jogador submete a primeira branca da mão
-        # (assumindo que existem cartas brancas na mão)
-        try:
-            gs.submit_card(p.id, 0)
-            print(f"{p.name} submitted a card")
-        except Exception as e:
-            print(f"{p.name} failed to submit: {e}")
+        # submissions
+        for p in players:
+            try:
+                gs.submit_card(p.id, 0)
+            except Exception as e:
+                print(f"submit failed for {p.id}: {e}")
 
-    print("After submissions snapshot:", gs.snapshot())
+        # simple voting strategy for demo
+        for voter in players:
+            candidates = [pid for pid in gs.voting.submissions.keys() if pid != voter.id]
+            if candidates:
+                gs.cast_vote(voter.id, candidates[0])
 
-    # Simula votação: cada jogador vota no outro (não pode votar em si mesmo)
-    for voter in players:
-        # encontre um candidato que não seja o próprio
-        candidates = [pid for pid in gs.submissions.keys() if pid != voter.id]
-        choice = candidates[0]
-        winner = gs.cast_vote(voter.id, choice)
-        print(f"{voter.name} voted for {choice}")
-        if winner is not None:
-            print("Voting complete. Winner:", winner)
+        # handle any runoffs automatically
+        while gs.voting_open:
+            for voter in players:
+                candidates = [pid for pid in gs.voting.submissions.keys() if pid != voter.id]
+                if candidates:
+                    gs.cast_vote(voter.id, candidates[0])
+
+        rounds += 1
 
     print("Final snapshot:", gs.snapshot())
 
 
 if __name__ == "__main__":
-    main()
+    print("Running clean demo (quick)")
+    play_game("quick")

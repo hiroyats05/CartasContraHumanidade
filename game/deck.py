@@ -47,6 +47,10 @@ class Deck:
     def add(self, card: Card) -> None:
         self.cards.append(card)
 
+    def add_many(self, cards: Iterable[Card]) -> None:
+        """Adiciona múltiplas cartas ao final do baralho."""
+        self.cards.extend(cards)
+
     def reset(self) -> None:
         self.cards = list(self._original)
 

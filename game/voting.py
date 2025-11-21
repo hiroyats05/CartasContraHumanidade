@@ -1,4 +1,4 @@
-from typing import Dict, Optional
+from typing import Dict, Optional, Iterable, List
 
 from .card import Card
 
@@ -8,17 +8,22 @@ class VotingSession:
 
     - `submissions`: mapping de `player_id` -> `Card` (cartas submetidas)
     - `votes`: mapping de `voter_id` -> `voted_player_id`
+    - `voters`: conjunto de `player_id` que estão autorizados a votar (normalmente todos os jogadores).
 
-    Regras simples: não é permitido votar em si mesmo.
+    Regras: não é permitido votar em si mesmo.
     """
 
-    def __init__(self, submissions: Dict[str, Card]):
+    def __init__(self, submissions: Dict[str, Card], voters: Optional[Iterable[str]] = None):
         self.submissions: Dict[str, Card] = dict(submissions)
         self.votes: Dict[str, str] = {}
+        if voters is None:
+            self.voters = set(self.submissions.keys())
+        else:
+            self.voters = set(voters)
 
     def cast_vote(self, voter_id: str, voted_player_id: str) -> None:
-        if voter_id not in self.submissions:
-            raise ValueError("Voter is not part of this voting session")
+        if voter_id not in self.voters:
+            raise ValueError("Voter is not authorized to vote in this session")
         if voted_player_id not in self.submissions:
             raise ValueError("Voted player is not part of this voting session")
         if voter_id == voted_player_id:
@@ -31,11 +36,11 @@ class VotingSession:
             counts[voted] = counts.get(voted, 0) + 1
         return counts
 
-    def winner(self) -> Optional[str]:
+    def leading_candidates(self) -> List[str]:
+        """Retorna a lista de candidatos com maior número de votos (possível empate)."""
         counts = self.tally()
         if not counts:
-            return None
-        # escolhe com mais votos; em caso de empate, usa ordenação estável (menor player id)
+            return []
         max_votes = max(counts.values())
-        candidates = [pid for pid, c in counts.items() if c == max_votes]
-        return sorted(candidates)[0]
+        return [pid for pid, c in counts.items() if c == max_votes]
+

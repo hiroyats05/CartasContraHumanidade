@@ -25,12 +25,22 @@ class GameState:
         # sessão de votação atual, é criada quando todas as submissões são feitas
         self.voting: Optional[VotingSession] = None
         self.voting_open: bool = False
+        # suporte a múltiplas rodadas
+        self.max_rounds: Optional[int] = None  # None = infinito
+        self.current_round: int = 0
 
     def start(self) -> None:
         self.deck.shuffle()
+        self.current_round = 0
         for p in self.players:
             p.clear_hand()
-            p.draw(self.deck, self.hand_size)
+            # garantir que cada jogador receba exatamente `hand_size` cartas
+            for _ in range(self.hand_size):
+                self._replenish_deck_if_needed()
+                if self.deck.is_empty():
+                    # se mesmo após tentar reabastecer não houver cartas, paramos
+                    break
+                p.draw(self.deck, 1)
         self.started = True
 
     def play_card(self, player_id: str, card_index: int) -> Card:
@@ -51,12 +61,16 @@ class GameState:
         """
         if player_id in self.submissions:
             raise ValueError(f"Player {player_id!r} already submitted for this round")
+        if self.is_finished():
+            raise RuntimeError("Game has finished; cannot submit cards")
         player = self._get_player(player_id)
         card = player.play(card_index)
         self.submissions[player_id] = card
         # se todos submeteram, inicializa sessão de votação
         if len(self.submissions) == len(self.players):
-            self.voting = VotingSession(self.submissions)
+            # todos os jogadores votam; permite votar mesmo para quem não submeteu
+            voter_ids = [p.id for p in self.players]
+            self.voting = VotingSession(self.submissions, voters=voter_ids)
             self.voting_open = True
 
     def deal_one_to(self, player_id: str) -> None:
@@ -77,6 +91,8 @@ class GameState:
             "current_turn": self.turns.current(),
             "submissions": list(self.submissions.keys()),
             "voting_open": self.voting_open,
+            "current_round": self.current_round,
+            "max_rounds": self.max_rounds,
         }
 
     def cast_vote(self, voter_id: str, voted_player_id: str) -> Optional[str]:
@@ -90,20 +106,49 @@ class GameState:
         self.voting.cast_vote(voter_id, voted_player_id)
         # quando todos votarem, resolve
         if len(self.voting.votes) == len(self.players):
-            winner_id = self.voting.winner()
-            if winner_id is not None:
+            # apura resultados e detecta empate
+            leading = self.voting.leading_candidates()
+            if len(leading) == 1:
+                winner_id = leading[0]
                 winner = self._get_player(winner_id)
                 winner.score += 1
-            # mover submissões para descarte
-            for c in self.submissions.values():
-                self.discard.append(c)
-            # limpar estado de rodada
-            self.submissions.clear()
-            self.voting = None
-            self.voting_open = False
-            # reabastecer mãos até hand_size
-            for p in self.players:
-                while len(p.hand) < self.hand_size and not self.deck.is_empty():
-                    p.draw(self.deck, 1)
-            return winner_id
+                # mover submissões para descarte
+                for c in self.submissions.values():
+                    self.discard.append(c)
+                # limpar estado de rodada
+                self.submissions.clear()
+                self.voting = None
+                self.voting_open = False
+                # cada jogador ganha exatamente 1 carta ao final da rodada (se houver no deck)
+                for p in self.players:
+                    # se o deck acabou, reembaralha o discard de volta no deck
+                    self._replenish_deck_if_needed()
+                    if not self.deck.is_empty():
+                        p.draw(self.deck, 1)
+                # incrementar o contador de rodadas
+                self.current_round += 1
+                return winner_id
+            else:
+                # empate -> abre uma nova rodada de votação apenas entre os empatados
+                tied_submissions = {pid: self.submissions[pid] for pid in leading}
+                voter_ids = [p.id for p in self.players]
+                self.voting = VotingSession(tied_submissions, voters=voter_ids)
+                self.voting_open = True
+                # mantém self.submissions (serão descartadas quando houver um vencedor)
+                # as `votes` anteriores são descartadas porque `self.voting` foi substituída
+                return None
         return None
+
+    def is_finished(self) -> bool:
+        """Retorna True se o jogo atingiu o número máximo de rodadas (quando configurado)."""
+        if self.max_rounds is None:
+            return False
+        return self.current_round >= self.max_rounds
+
+    def _replenish_deck_if_needed(self) -> None:
+        """Se o deck estiver vazio e houver cartas no descarte, move-as para o deck e embaralha."""
+        if self.deck.is_empty() and self.discard:
+            # move todas as cartas do descarte para o deck e embaralha
+            self.deck.add_many(self.discard)
+            self.deck.shuffle()
+            self.discard.clear()
