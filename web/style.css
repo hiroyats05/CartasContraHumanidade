@@ -82,7 +82,7 @@ body{
 .game-topbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 20px; background: rgba(0,0,0,0.18); border-bottom:1px solid rgba(255,255,255,0.03); }
 .game-topbar .left, .game-topbar .right{ display:flex; align-items:center; }
 .game-main{ display:flex; flex:1; padding:18px; gap:18px; }
-.game-canvas{ flex:1; display:flex; align-items:center; justify-content:center; background: linear-gradient(180deg,#0a0f16, #07121a); border-radius:12px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); min-height:320px; }
+.game-canvas{ flex:1; display:flex; align-items:center; justify-content:center; background: linear-gradient(180deg,#0a0f16, #07121a); border-radius:12px; box-shadow: 0 20px 50px rgba(0,0,0,0.6); min-height:320px; overflow:visible }
 .game-canvas{ position:relative; }
 .game-sidebar{ width:320px; }
 .panel{ background: rgba(255,255,255,0.02); padding:12px; border-radius:10px; margin-bottom:12px; }
@@ -117,12 +117,30 @@ body{
 .deck-label{ font-size:11px; opacity:0.85 }
 
 /* black card in the canvas with centered text */
-#g_canvas .black-card-large{ width:520px; max-width:90%; height:260px; border-radius:14px; display:flex; align-items:center; justify-content:center; background: linear-gradient(180deg,#0b0b0b,#161616); color:#fff; padding:26px; box-shadow: 0 30px 80px rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.04); font-size:22px; text-align:center }
+#g_canvas .black-card-large{ position:relative; z-index:10; width:520px; max-width:90%; height:260px; border-radius:14px; display:flex; align-items:center; justify-content:center; background: linear-gradient(180deg,#0b0b0b,#161616); color:#fff; padding:26px; box-shadow: 0 30px 80px rgba(0,0,0,0.8); border:1px solid rgba(255,255,255,0.04); font-size:22px; text-align:center }
 
-/* decks inside canvas */
-.canvas-decks{ position:absolute; left:28px; bottom:28px; display:flex; gap:12px; align-items:center }
+/* decks inside canvas: small deck widgets positioned above the table (show counts only) */
+.canvas-decks{ position:absolute; left:28px; top:50%; transform: translateY(-50%); display:flex; flex-direction:column; gap:12px; align-items:center; z-index:20 }
 .canvas-decks .deck{ width:62px; height:84px }
 .canvas-decks .deck .deck-count{ font-size:16px }
+/* hide label and textual previews inside the canvas decks so only numbers appear */
+.canvas-decks .deck .deck-label,
+.canvas-decks .deck .deck-preview{ display:none }
+
+.table-cards{ position:absolute; left:50%; top:58%; transform: translate(-50%, 8px); display:flex; gap:16px; pointer-events:auto; z-index:30 }
+.table-cards .card.table-card{ width:160px; min-height:72px; font-size:14px; box-shadow: 0 12px 30px rgba(2,6,23,0.6); display:flex; align-items:center; justify-content:center; padding:8px; border-radius:10px }
+.table-cards .card.table-card.white{ background:#fff; color:#111 }
+.table-cards .card.table-card.black{ background:#0b0b0b; color:#fff }
+.table-cards .card.table-card .content{ padding:6px 8px; text-align:center; font-size:13px; color:inherit }
+.table-cards .card.table-card:hover{ transform: translateY(-6px); box-shadow: 0 20px 40px rgba(0,0,0,0.6) }
+
+/* destaque visual para a carta que o jogador votou: escurece e reduz brilho */
+.table-cards .card.voted{ filter: brightness(0.65); opacity: 0.85; box-shadow: inset 0 0 0 2px rgba(0,0,0,0.06); }
+
+/* the current player's submitted card shown near the table (below the black card) */
+.your-submission{ position:absolute; left:50%; top:100%; transform: translate(-50%, -50%); z-index:36; display:flex; align-items:center; justify-content:center }
+.your-submission .card{ width:140px; height:90px; box-shadow: 0 10px 30px rgba(0,0,0,0.6); border-radius:10px }
+.your-submission .card .content{ padding:10px; font-size:14px; text-align:center }
 
 /* deck textual previews */
 .deck-preview{ margin-top:6px; max-height:64px; overflow:hidden; text-overflow:ellipsis; }
@@ -132,7 +150,7 @@ body{
 
 /* Table seats (poker-style) */
 .table-surface{ position: absolute; inset:0; display:block; pointer-events:none }
-#table_seats{ position:absolute; inset:0; pointer-events:none }
+#table_seats{ position:absolute; inset:0; pointer-events:none; z-index:40 }
 .table-seat{ position:absolute; transform: translate(-50%,-50%); width:140px; display:flex; align-items:center; gap:8px; pointer-events:auto }
 .table-seat.you { outline: 2px solid var(--accent); border-radius:10px; padding:6px; background: rgba(255,255,255,0.02); }
 .seat-avatar{ width:44px; height:44px; border-radius:50%; background:linear-gradient(180deg,#5470ff,#2b3e9a); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:700; box-shadow:0 6px 18px rgba(0,0,0,0.5); }
@@ -145,8 +163,14 @@ body{
   .seat-avatar{ width:36px; height:36px }
 }
 
-/* players list styling */
-#g_players li{ padding:8px 10px; border-radius:8px; margin-bottom:6px; background: rgba(255,255,255,0.02); }
+/* players sidebar removed; previous #g_players styles removed */
+
+/* Footer hand: center heading and cards */
+.game-footer{ padding:16px 18px 28px 18px; }
+.game-footer .hand{ display:flex; flex-direction:column; align-items:center; gap:10px; max-width:100%; }
+.game-footer .hand h4{ margin:0; font-size:15px; color:var(--muted); text-align:center }
+.game-footer #g_hand{ display:flex; justify-content:center; width:100%; }
+.game-footer #g_hand .hand-cards{ justify-content:center; }
 
 /* responsive */
 @media(max-width:900px){ .game-sidebar{ display:none } .hand-cards{ overflow:auto } }

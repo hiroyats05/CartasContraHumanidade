@@ -17,7 +17,20 @@ def _sample_white_texts() -> List[str]:
         "O Cred é bicha",
         "Samuel",
         "Gabriel T.I",
-
+        "Cranco Mole",
+        "Cred",
+        "Typero",
+        "Jonatha",
+        "Arthur Guilherme",
+        "Rodrishow",
+        "Ver filme com Rodrigo",
+        "Pizza na casa Menezes",
+        "Jean Escocês",
+        "Wilker",
+        "Sujinho",
+        "Aids",
+        "O mais sábio",
+        "Molestar o Typero",
     ]
 
 
@@ -31,7 +44,9 @@ def _sample_black_texts() -> List[Tuple[str, int]]:
         ("O Kayke me chamou de preto porque ____.", 1),
         ("Virei momentos formidáveis do FCG porque ____.", 1),
         ("O BlackNinja me baniu porque ____.", 1),
-        ("O AGM CM acha que ____ e todos deveriamos ____", 2),
+        ("O AGM CM acha que todos deveriamos ____", 1),
+        ("O mais sábio do fcg é ____.", 1),
+        ("Vendo wandinha eu gosto de ____.", 1)
     ]
 
 

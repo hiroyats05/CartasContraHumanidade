@@ -1,12 +1,28 @@
-// Minimal game UI that connects to ws://localhost:6789 and renders state
-const SERVER_URL = 'ws://localhost:6789';
+// Minimal game UI that connects to the WebSocket server and renders state
+// Build SERVER_URL dynamically so remote players can connect using the server IP.
+function _getServerHostFromQuery() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const srv = params.get('server') || params.get('host') || params.get('ws');
+    if (srv) return srv;
+  } catch (e) {}
+  if (window.location && window.location.host) return window.location.host;
+  return 'localhost';
+}
+const SERVER_URL = (() => {
+  const host = _getServerHostFromQuery();
+  const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
+  return `${proto}://${host}/ws`;
+})();
 
 document.addEventListener('DOMContentLoaded', () => {
   const statusEl = document.getElementById('g_status');
   const roomEl = document.getElementById('g_room');
-  const playersEl = document.getElementById('g_players');
-  const playersCountEl = document.getElementById('g_players_count');
-  const submissionsEl = document.getElementById('g_submissions');
+  // Players sidebar removed; we still read players from state for seats/logic
+  const playersEl = null;
+  const playersCountEl = null;
+  // `g_submissions` panel removed from DOM; submissions are rendered on the table
+  const submissionsEl = null;
   const handEl = document.getElementById('g_hand');
   const canvasEl = document.getElementById('g_canvas');
   const readyBtn = document.getElementById('g_btn_ready');
@@ -20,6 +36,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // create client and connect
   const client = new WSClient(SERVER_URL);
+  // guarda localmente em qual submissão eu votei (player id da submissão)
+  let myVotedFor = null;
   client.addEventListener('status', (e) => {
     if (statusEl) statusEl.textContent = e.detail;
   });
@@ -30,6 +48,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (msg.event === 'player_ready') {
       // we already update via state, but could flash a message
       console.debug('player_ready event', msg.player, msg.ready);
+    }
+    // when a vote is cast, ensure we refresh state (some servers may omit full state)
+    if (msg.event === 'vote_cast') {
+      if (msg.state) renderState(msg.state);
+      else try { client.send({ action: 'state', room: msg.room }); } catch (e) { console.debug('state request failed', e); }
+    }
+    // if the server reports a winner, explicitly request state to ensure UI updates
+    if (msg.winner) {
+      console.debug('vote winner reported', msg.winner);
+      try { client.send({ action: 'state', room: msg.room }); } catch (e) { console.debug('state request failed', e); }
     }
   });
   client.connect();
@@ -78,36 +106,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (wcountEl) wcountEl.textContent = String(state.white_deck_count || 0);
     if (bcountEl) bcountEl.textContent = String(state.black_deck_count || (state.black_card_text ? 1 : 0));
     const players = state.players || [];
-    if (playersEl) {
-      playersEl.innerHTML = '';
-      players.forEach(p => {
-        const li = document.createElement('li');
-        const readyList = state.ready || [];
-        const isReady = readyList.includes(p.id);
-        li.textContent = `${p.name || p.id} (${p.hand_count || 0})`;
-        if (isReady) {
-          const badge = document.createElement('span');
-          badge.textContent = ' READY';
-          badge.style.color = '#6ee7b7';
-          badge.style.fontWeight = '700';
-          badge.style.marginLeft = '8px';
-          li.appendChild(badge);
-        }
-        playersEl.appendChild(li);
-      });
-    }
-    if (playersCountEl) playersCountEl.textContent = players.length;
 
-    // submissions
-    submissionsEl.innerHTML = '';
-    (state.submissions || []).forEach(sid => {
-      const btn = document.createElement('button');
-      btn.textContent = `Vote ${sid}`;
-      btn.addEventListener('click', () => {
-        client.send({ action: 'vote', room: state.room, voter_id: playerId, voted_player_id: sid });
-      });
-      submissionsEl.appendChild(btn);
-    });
+    // submissions list in sidebar removed — voting is handled by clicking table cards
 
     // hand (count only) - render index buttons
     handEl.innerHTML = '';
@@ -157,7 +157,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tableSurface = document.createElement('div');
     tableSurface.className = 'table-surface';
     canvasEl.appendChild(tableSurface);
-    // decks container inside canvas
+    // decks container inside canvas (show only counts; previews/labels are hidden by CSS)
     const decksWrap = document.createElement('div');
     decksWrap.className = 'canvas-decks';
     const whiteDeck = document.createElement('div');
@@ -166,24 +166,7 @@ document.addEventListener('DOMContentLoaded', () => {
     whiteCount.className = 'deck-count';
     whiteCount.id = 'g_deck_white_count';
     whiteCount.textContent = String(state.white_deck_count || 0);
-    const whiteLabel = document.createElement('div');
-    whiteLabel.className = 'deck-label';
-    whiteLabel.textContent = 'White';
     whiteDeck.appendChild(whiteCount);
-    whiteDeck.appendChild(whiteLabel);
-    // small preview of next white cards (texts)
-    if (Array.isArray(state.white_top) && state.white_top.length > 0) {
-      const wp = document.createElement('div');
-      wp.className = 'deck-preview white-preview';
-      // show up to 3 previews
-      state.white_top.slice(0, 3).forEach((txt, idx) => {
-        const t = document.createElement('div');
-        t.className = 'preview-line';
-        t.textContent = txt;
-        wp.appendChild(t);
-      });
-      whiteDeck.appendChild(wp);
-    }
 
     const blackDeck = document.createElement('div');
     blackDeck.className = 'deck black-deck';
@@ -191,22 +174,79 @@ document.addEventListener('DOMContentLoaded', () => {
     blackCount.className = 'deck-count';
     blackCount.id = 'g_deck_black_count';
     blackCount.textContent = String(state.black_deck_count || (state.black_card_text ? 1 : 0));
-    const blackLabel = document.createElement('div');
-    blackLabel.className = 'deck-label';
-    blackLabel.textContent = 'Black';
     blackDeck.appendChild(blackCount);
-    blackDeck.appendChild(blackLabel);
-    // small preview of next black card prompt
-    if (state.black_top) {
-      const bp = document.createElement('div');
-      bp.className = 'deck-preview black-preview';
-      bp.textContent = state.black_top;
-      blackDeck.appendChild(bp);
-    }
 
     decksWrap.appendChild(whiteDeck);
     decksWrap.appendChild(blackDeck);
     canvasEl.appendChild(decksWrap);
+
+    // render table cards (played submissions) with visible text and clickable to vote
+    const tableCardsWrap = document.createElement('div');
+    tableCardsWrap.className = 'table-cards';
+    const submissionTexts = state.submission_texts || {};
+    const submissions = state.submissions || [];
+    // if there are no submissions (round finished), clear local voted mark
+    if (!submissions || submissions.length === 0) {
+      myVotedFor = null;
+    }
+    // separate current player's submission from others so we can position it near the table
+    let mySubmission = null;
+    submissions.forEach((sid, idx) => {
+      if (sid === playerId) {
+        mySubmission = { sid, idx };
+        return;
+      }
+      const tcard = document.createElement('div');
+      tcard.className = 'card table-card white';
+      tcard.dataset.sid = sid;
+      const content = document.createElement('div');
+      content.className = 'content';
+      content.textContent = submissionTexts[sid] || `Submission ${idx+1}`;
+      tcard.appendChild(content);
+
+      if (state.voting_open) {
+        tcard.style.pointerEvents = 'auto';
+        tcard.style.cursor = 'pointer';
+        tcard.addEventListener('click', () => {
+          try {
+            client.send({ action: 'vote', room: state.room, voter_id: playerId, voted_player_id: sid });
+            // destacar localmente a carta votada e evitar múltiplos cliques
+            myVotedFor = sid;
+            // desabilita cliques nas cartas da mesa até a atualização do estado
+            const all = tableCardsWrap.querySelectorAll('.card.table-card');
+            all.forEach(a=>{ a.style.pointerEvents = 'none'; });
+            // aplica destaque (escurecer)
+            applyVoteHighlight();
+          } catch (e) { console.debug('vote send failed', e); }
+        });
+      } else {
+        tcard.style.pointerEvents = 'none';
+      }
+
+      tableCardsWrap.appendChild(tcard);
+    });
+
+    // função que aplica o destaque de voto localmente
+    function applyVoteHighlight() {
+      const all = tableCardsWrap.querySelectorAll('.card.table-card');
+      all.forEach(el => {
+        if (myVotedFor && el.dataset && el.dataset.sid === myVotedFor) {
+          el.classList.add('voted');
+          el.style.pointerEvents = 'none';
+        } else {
+          el.classList.remove('voted');
+          // restaurar pointer-events dependendo de voting_open
+          if (state.voting_open) {
+            el.style.pointerEvents = 'auto';
+          } else {
+            el.style.pointerEvents = 'none';
+          }
+        }
+      });
+    }
+
+    // aplicar destaque a cada render
+    applyVoteHighlight();
 
     // seats around the table (Poker-style)
     let seatsWrap = document.getElementById('table_seats');
@@ -223,7 +263,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const cx = rect.width / 2; // center x inside canvas
     const cy = rect.height / 2; // center y
     // radius: a bit smaller than half width/height
-    const radius = Math.min(rect.width, rect.height) * 0.36;
+    // increase radius so seats sit further out and avoid overlapping the central black card
+    const radius = Math.min(rect.width, rect.height) * 0.46;
     // rotate seats so that the current player is always at the bottom
     const myIndex = players.findIndex(pp => pp.id === playerId);
     players.forEach((p, idx) => {
@@ -246,8 +287,13 @@ document.addEventListener('DOMContentLoaded', () => {
       // compute position around circle; rotate so myIndex is at bottom (PI/2)
       const relIdx = (idx - (myIndex >= 0 ? myIndex : 0));
       const angle = Math.PI/2 + (total>0 ? (relIdx * (2*Math.PI/total)) : 0); // bottom anchor
-      const x = cx + Math.cos(angle) * radius;
-      const y = cy + Math.sin(angle) * radius;
+      // allow the current player's seat to be slightly closer to the table
+      let seatRadius = radius;
+      if (p.id === playerId) {
+        seatRadius = radius * 0.78; // pull the 'you' seat inward (~22%)
+      }
+      const x = cx + Math.cos(angle) * seatRadius;
+      const y = cy + Math.sin(angle) * seatRadius;
       // position seat absolutely relative to canvasEl
       seat.style.left = `${x}px`;
       seat.style.top = `${y}px`;
@@ -262,12 +308,27 @@ document.addEventListener('DOMContentLoaded', () => {
     blackCard.textContent = blackText;
     canvasEl.appendChild(blackCard);
 
-    // also show small info under canvas
-    const info = document.createElement('div');
-    info.style.marginTop = '12px';
-    info.style.color = 'var(--muted)';
-    info.textContent = `Round: ${state.current_round || 0}  Voting: ${state.voting_open ? 'yes' : 'no'}`;
-    canvasEl.appendChild(info);
+    // append table cards after the black card so they appear above it
+    canvasEl.appendChild(tableCardsWrap);
+
+    // if the current player submitted, render their submitted card near the table
+    if (mySubmission) {
+      const sid = mySubmission.sid;
+      const yourWrap = document.createElement('div');
+      yourWrap.className = 'your-submission';
+      const ycard = document.createElement('div');
+      ycard.className = 'card white';
+      const ycontent = document.createElement('div');
+      ycontent.className = 'content';
+      ycontent.textContent = submissionTexts[sid] || 'Your submission';
+      ycard.appendChild(ycontent);
+      // do not make it clickable for voting by default (voting handled via table cards)
+      ycard.style.pointerEvents = 'none';
+      yourWrap.appendChild(ycard);
+      canvasEl.appendChild(yourWrap);
+    }
+
+    // small info removed from layout (handled by higher-level UI or server logs)
   }
 
   // UI buttons
@@ -297,6 +358,8 @@ document.addEventListener('DOMContentLoaded', () => {
       client.send({ action: 'start', room: r });
     });
   }
+
+  // debug helper removed
 
   // Request an initial state when the socket becomes connected, rather than polling.
   client.addEventListener('status', (e) => {

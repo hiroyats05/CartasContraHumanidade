@@ -22,7 +22,7 @@ def _replicate_deck(deck: Deck, factor: int = 3) -> Deck:
     return Deck(cards)
 
 
-def play_game(mode: str, demo_limit_for_infinite: int = 5, hand_size: int = 5) -> None:
+def play_game(mode: str, demo_limit_for_infinite: int = 5, hand_size: int = 3) -> None:
     mode = mode.lower()
     if mode == "quick":
         max_rounds: Optional[int] = 10

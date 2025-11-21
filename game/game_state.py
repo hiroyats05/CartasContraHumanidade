@@ -13,7 +13,7 @@ class GameState:
     Responsável por operações de alto nível como iniciar jogo e jogar cartas.
     """
 
-    def __init__(self, players: List[Player], white_deck: Deck, black_deck: Optional[Deck] = None, hand_size: int = 5) -> None:
+    def __init__(self, players: List[Player], white_deck: Deck, black_deck: Optional[Deck] = None, hand_size: int = 3) -> None:
         self.players: List[Player] = players
         self.white_deck: Deck = white_deck
         self.black_deck: Optional[Deck] = black_deck
@@ -117,6 +117,7 @@ class GameState:
             "discard_count": len(self.discard),
             "current_turn": self.turns.current(),
             "submissions": list(self.submissions.keys()),
+            "submission_texts": {pid: getattr(card, 'text', str(card)) for pid, card in self.submissions.items()},
             "voting_open": self.voting_open,
             "current_round": self.current_round,
             "max_rounds": self.max_rounds,

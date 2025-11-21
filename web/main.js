@@ -1,5 +1,20 @@
 // Phaser 3 minimal client to interact with the cardgame websocket server
-const SERVER_URL = 'ws://localhost:6789';
+// Build SERVER_URL dynamically so remote players can connect using the server IP.
+function _getServerHostFromQuery() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const srv = params.get('server') || params.get('host') || params.get('ws');
+    if (srv) return srv;
+  } catch (e) {}
+  if (window.location && window.location.host) return window.location.host;
+  return 'localhost';
+}
+const SERVER_URL = (() => {
+  const host = _getServerHostFromQuery();
+  const proto = (location.protocol === 'https:') ? 'wss' : 'ws';
+  // connect to websocket endpoint at /ws on the chosen host
+  return `${proto}://${host}/ws`;
+})();
 
 window.addEventListener('load', () => {
   const nameInput = document.getElementById('player_name');
