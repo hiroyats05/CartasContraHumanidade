@@ -35,12 +35,15 @@ class Room:
     def __init__(self, room_id: str) -> None:
         self.room_id = room_id
         white, black = make_cah_like_decks()
-        # replicate a bit for demo
-        combined = Deck(list(white.cards) + list(black.cards))
-        self.game = GameState([], combined, hand_size=5)
+        # keep white and black decks separate
+        self.white_deck = Deck(list(white.cards))
+        self.black_deck = Deck(list(black.cards))
+        self.game = GameState([], self.white_deck, self.black_deck, hand_size=5)
         self.conns: Set[websockets.WebSocketServerProtocol] = set()
         # players that signalled ready for the next game
         self.ready: Set[str] = set()
+        # map websocket connection -> player_id (set during join)
+        self.conn_player: Dict[websockets.WebSocketServerProtocol, str] = {}
 
     def snapshot(self) -> dict:
         s = self.game.snapshot()
@@ -55,9 +58,60 @@ async def notify_room(room: Room, message: dict) -> None:
     if not room.conns:
         logging.debug('notify_room: no connections in room %s', room.room_id)
         return
-    data = json.dumps(message)
     logging.debug('notify_room: broadcasting to room %s -> %s (conns=%d)', room.room_id, message, len(room.conns))
-    coros = [c.send(data) for c in room.conns]
+    # If message contains a 'state' dict, we will personalize it per-connection
+    base_state = None
+    if 'state' in message and isinstance(message['state'], dict):
+        base_state = message['state']
+    coros = []
+    for c in list(room.conns):
+        try:
+            msg = dict(message)
+            if base_state is not None:
+                # deep-ish copy of state for personalization
+                st = dict(base_state)
+                # always include room-level snapshot data fresh
+                st.update(room.game.snapshot())
+                # expose which players are ready
+                st['ready'] = list(room.ready)
+                st['room'] = room.room_id
+                # include black deck count from room
+                st['black_deck_count'] = len(room.black_deck) if room.black_deck is not None else 0
+                # if this connection is associated with a player, include their hand texts as 'your_hand'
+                pid = room.conn_player.get(c)
+                if pid:
+                    try:
+                        pl = next(p for p in room.game.players if p.id == pid)
+                        st['your_hand'] = [getattr(card, 'text', str(card)) for card in pl.hand]
+                    except StopIteration:
+                        st['your_hand'] = []
+                # also include a small preview of the top cards in the decks for UI
+                try:
+                    # white_top: up to 3 next white card texts (do not modify deck)
+                    white_preview = []
+                    for card in room.white_deck.cards:
+                        if getattr(card, 'type', None) and getattr(card.type, 'value', None) == 'white':
+                            white_preview.append(getattr(card, 'text', str(card)))
+                            if len(white_preview) >= 3:
+                                break
+                    st['white_top'] = white_preview
+                except Exception:
+                    st['white_top'] = []
+                try:
+                    # black_top: next black card text if any
+                    black_preview = None
+                    for card in room.black_deck.cards:
+                        if getattr(card, 'type', None) and getattr(card.type, 'value', None) == 'black':
+                            black_preview = getattr(card, 'text', str(card))
+                            break
+                    st['black_top'] = black_preview
+                except Exception:
+                    st['black_top'] = None
+                msg['state'] = st
+            data = json.dumps(msg)
+            coros.append(c.send(data))
+        except Exception as e:
+            logging.exception('notify_room: prepare/send failed for conn %s: %s', getattr(c, 'remote_address', None), e)
     results = await asyncio.gather(*coros, return_exceptions=True)
     for conn, res in zip(list(room.conns), results):
         if isinstance(res, Exception):
@@ -108,7 +162,8 @@ async def handle_message(ws, raw: str) -> None:
         room = Room(room_id)
         ROOMS[room_id] = room
         logging.info('Room created: %s', room_id)
-        await ws.send(json.dumps({"status": "created", "room": room_id}))
+        # include initial snapshot with deck counts
+        await ws.send(json.dumps({"status": "created", "room": room_id, "state": room.snapshot()}))
         return
 
     if room is None:
@@ -132,6 +187,7 @@ async def handle_message(ws, raw: str) -> None:
             room.game.turns.player_ids.append(pid)
         # register connection
         room.conns.add(ws)
+        room.conn_player[ws] = pid
         logging.info('Player %s joining room %s (connections=%d)', pid, room_id, len(room.conns))
         await notify_room(room, {"event": "player_joined", "room": room_id, "state": room.snapshot()})
         return
@@ -159,13 +215,27 @@ async def handle_message(ws, raw: str) -> None:
             if player_ids:
                 missing = [x for x in player_ids if x not in room.ready]
                 if not missing:
-                    logging.info('All players ready in room %s, auto-starting', room_id)
-                    try:
-                        room.game.start()
-                        room.ready.clear()
-                        await notify_room(room, {"event": "started", "room": room_id, "state": room.snapshot()})
-                    except Exception as e:
-                        logging.exception('Failed to auto-start room %s: %s', room_id, e)
+                    # do not auto-start if there are no active connections (guard noisy ready signals)
+                    if not room.conns:
+                        logging.debug('Auto-start skipped: no active connections in room %s', room_id)
+                    else:
+                        # require that all known players are currently connected to avoid starting on stale/partial state
+                        connected_pids = set(room.conn_player.get(c) for c in room.conns if room.conn_player.get(c))
+                        player_ids_set = set(player_ids)
+                        if connected_pids != player_ids_set:
+                            logging.debug('Auto-start skipped: not all players are connected for room %s (connected=%s players=%s)', room_id, connected_pids, player_ids_set)
+                        else:
+                            # only auto-start if the game isn't already started
+                            if getattr(room.game, 'started', False):
+                                logging.debug('Auto-start skipped: game already started for room %s', room_id)
+                            else:
+                                logging.info('All players ready in room %s, auto-starting', room_id)
+                                try:
+                                    room.game.start()
+                                    room.ready.clear()
+                                    await notify_room(room, {"event": "started", "room": room_id, "state": room.snapshot()})
+                                except Exception as e:
+                                    logging.exception('Failed to auto-start room %s: %s', room_id, e)
         except Exception:
             logging.exception('Error while checking auto-start condition for room %s', room_id)
         return
@@ -210,7 +280,39 @@ async def handle_message(ws, raw: str) -> None:
         return
 
     if action == "state":
-        await ws.send(json.dumps({"state": room.snapshot()}))
+        try:
+            st = room.snapshot()
+            # add deck previews for direct state request
+            try:
+                white_preview = []
+                for card in room.white_deck.cards:
+                    if getattr(card, 'type', None) and getattr(card.type, 'value', None) == 'white':
+                        white_preview.append(getattr(card, 'text', str(card)))
+                        if len(white_preview) >= 3:
+                            break
+                st['white_top'] = white_preview
+            except Exception:
+                st['white_top'] = []
+            try:
+                black_preview = None
+                for card in room.black_deck.cards:
+                    if getattr(card, 'type', None) and getattr(card.type, 'value', None) == 'black':
+                        black_preview = getattr(card, 'text', str(card))
+                        break
+                st['black_top'] = black_preview
+            except Exception:
+                st['black_top'] = None
+            # include your_hand for this connection when known
+            pid = room.conn_player.get(ws)
+            if pid:
+                try:
+                    pl = next(p for p in room.game.players if p.id == pid)
+                    st['your_hand'] = [getattr(card, 'text', str(card)) for card in pl.hand]
+                except Exception:
+                    st['your_hand'] = []
+            await ws.send(json.dumps({"state": st}))
+        except Exception:
+            await ws.send(json.dumps({"error": "failed to build state"}))
         return
 
     await ws.send(json.dumps({"error": "unknown action"}))
@@ -228,6 +330,12 @@ async def handler(ws) -> None:
         for room in ROOMS.values():
             if ws in room.conns:
                 room.conns.remove(ws)
+                # also remove mapping if present
+                if ws in room.conn_player:
+                    try:
+                        del room.conn_player[ws]
+                    except Exception:
+                        pass
                 logging.info('Connection %s removed from room %s', getattr(ws, 'remote_address', None), room.room_id)
 
 

@@ -7,28 +7,31 @@ from .deck import Deck
 def _sample_white_texts() -> List[str]:
     # Exemplos curtos/originais; substitua pelo seu conjunto de cartas.
     return [
-        "Um pato usando óculos de sol",
-        "Dormir cedo e ainda acordar cansado",
-        "Um sanduíche de geleia com pimenta",
-        "Aquele momento embaraçoso no elevador",
-        "Uma reunião que poderia ter sido um e-mail",
-        "Gatos que julgam silenciosamente",
-        "Fazer café e esquecer a xícara",
-        "Uma viagem desastrosa mas engraçada",
-        "O modem reiniciando sem motivo",
-        "Uma playlist que só toca músicas ruins",
+        "Gabiru",
+        "Cred molestando o Typero",
+        "Tosknazi",
+        "SSD do Rodrishow",
+        "Almoço no ratão",
+        "Virar bichona",
+        "Desmaio na academia",
+        "O Cred é bicha",
+        "Samuel",
+        "Gabriel T.I",
+
     ]
 
 
 def _sample_black_texts() -> List[Tuple[str, int]]:
     # Tupla: (texto do prompt, número de respostas esperadas)
     return [
-        ("Nada melhor do que {}.", 1),
-        ("Em um mundo pós-apocalíptico, eu sempre levo {}.", 1),
-        ("O que me deixa acordado à noite? {} e {}.", 2),
-        ("Minha habilidade secreta é {}.", 1),
-        ("No próximo comercial de TV, iremos mostrar {}.", 1),
-        ("O FCG seria melhor se {}.", 1)
+        ("Nada melhor do que ____.", 1),
+        ("O FCG seria melhor se ____.", 1),
+        ("Desmaiei na academia porque ____.", 1),
+        ("O Futebol feminino é ____.", 1),
+        ("O Kayke me chamou de preto porque ____.", 1),
+        ("Virei momentos formidáveis do FCG porque ____.", 1),
+        ("O BlackNinja me baniu porque ____.", 1),
+        ("O AGM CM acha que ____ e todos deveriamos ____", 2),
     ]
 
 

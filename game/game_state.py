@@ -13,9 +13,10 @@ class GameState:
     Responsável por operações de alto nível como iniciar jogo e jogar cartas.
     """
 
-    def __init__(self, players: List[Player], deck: Deck, hand_size: int = 5) -> None:
+    def __init__(self, players: List[Player], white_deck: Deck, black_deck: Optional[Deck] = None, hand_size: int = 5) -> None:
         self.players: List[Player] = players
-        self.deck: Deck = deck
+        self.white_deck: Deck = white_deck
+        self.black_deck: Optional[Deck] = black_deck
         self.discard: List[Card] = []
         self.turns: TurnManager = TurnManager([p.id for p in players])
         self.hand_size = hand_size
@@ -30,18 +31,44 @@ class GameState:
         self.current_round: int = 0
 
     def start(self) -> None:
-        self.deck.shuffle()
+        # shuffle available decks
+        try:
+            if self.white_deck:
+                self.white_deck.shuffle()
+        except Exception:
+            pass
+        try:
+            if self.black_deck:
+                self.black_deck.shuffle()
+        except Exception:
+            pass
         self.current_round = 0
         for p in self.players:
             p.clear_hand()
             # garantir que cada jogador receba exatamente `hand_size` cartas
             for _ in range(self.hand_size):
                 self._replenish_deck_if_needed()
-                if self.deck.is_empty():
+                if self.white_deck.is_empty():
                     # se mesmo após tentar reabastecer não houver cartas, paramos
                     break
-                p.draw(self.deck, 1)
+                p.draw(self.white_deck, 1)
         self.started = True
+        # draw a black card for the round (if available)
+        self.current_black_card: Optional[Card] = None
+        if self.black_deck:
+            try:
+                # draw the next black card (use draw_black which skips non-black)
+                maybe = self.black_deck.draw(1)
+                if maybe:
+                    self.current_black_card = maybe[0]
+                else:
+                    # fallback to draw_black which returns single card or None
+                    try:
+                        self.current_black_card = self.black_deck.draw_black()
+                    except Exception:
+                        self.current_black_card = None
+            except Exception:
+                self.current_black_card = None
 
     def play_card(self, player_id: str, card_index: int) -> Card:
         """API antiga (mantida para compatibilidade): joga imediatamente para descarte.
@@ -75,7 +102,7 @@ class GameState:
 
     def deal_one_to(self, player_id: str) -> None:
         player = self._get_player(player_id)
-        player.draw(self.deck, 1)
+        player.draw(self.white_deck, 1)
 
     def _get_player(self, player_id: str) -> Player:
         for p in self.players:
@@ -86,13 +113,14 @@ class GameState:
     def snapshot(self) -> dict:
         return {
             "players": [{"id": p.id, "name": p.name, "hand_count": len(p.hand), "score": p.score} for p in self.players],
-            "deck_count": len(self.deck),
+            "white_deck_count": len(self.white_deck),
             "discard_count": len(self.discard),
             "current_turn": self.turns.current(),
             "submissions": list(self.submissions.keys()),
             "voting_open": self.voting_open,
             "current_round": self.current_round,
             "max_rounds": self.max_rounds,
+            "black_card_text": getattr(self, 'current_black_card', None) and getattr(self.current_black_card, 'text', None),
         }
 
     def cast_vote(self, voter_id: str, voted_player_id: str) -> Optional[str]:
@@ -123,8 +151,8 @@ class GameState:
                 for p in self.players:
                     # se o deck acabou, reembaralha o discard de volta no deck
                     self._replenish_deck_if_needed()
-                    if not self.deck.is_empty():
-                        p.draw(self.deck, 1)
+                    if not self.white_deck.is_empty():
+                        p.draw(self.white_deck, 1)
                 # incrementar o contador de rodadas
                 self.current_round += 1
                 return winner_id
@@ -147,8 +175,8 @@ class GameState:
 
     def _replenish_deck_if_needed(self) -> None:
         """Se o deck estiver vazio e houver cartas no descarte, move-as para o deck e embaralha."""
-        if self.deck.is_empty() and self.discard:
-            # move todas as cartas do descarte para o deck e embaralha
-            self.deck.add_many(self.discard)
-            self.deck.shuffle()
+        if self.white_deck.is_empty() and self.discard:
+            # move todas as cartas do descarte para o deck branco e embaralha
+            self.white_deck.add_many(self.discard)
+            self.white_deck.shuffle()
             self.discard.clear()

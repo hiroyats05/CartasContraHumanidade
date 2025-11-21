@@ -94,13 +94,11 @@ window.addEventListener('load', () => {
       client.send({ action: 'create', room: r });
       await waitForServerMessage(msg => msg.status === 'created' && msg.room === r, 5000);
 
-      // now join and wait for server broadcast that includes our player
-      client.send({ action: 'join', room: r, player_id: pid, name });
-      await waitForServerMessage(msg => msg.event === 'player_joined' && msg.room === r && msg.state && (msg.state.players || []).some(p => p.id === pid), 5000).catch(() => {
-        console.debug('Join confirmation wait timed out (create flow)');
-      });
-
-      status.textContent = 'Created and joined ' + r;
+      // We created the room; save player info and navigate to game page.
+      // Do NOT send a `join` on this page because navigation will close the socket
+      // and the server will associate the player with the new connection when
+      // the game page performs the join on connect.
+      status.textContent = 'Created ' + r;
       closeModal();
       try { localStorage.setItem('playerId', pid); localStorage.setItem('playerName', name); } catch (e) {}
       window.location.href = `game.html?room=${encodeURIComponent(r)}`;
@@ -159,9 +157,7 @@ window.addEventListener('load', () => {
           const pid = window.playerId;
           const nameVal = nameInput.value || pid;
           try {
-            console.debug('Requesting join', r.room, pid);
-            client.send({ action: 'join', room: r.room, player_id: pid, name: nameVal });
-            await waitForServerMessage(m => m.event === 'player_joined' && m.room === r.room && (m.state && (m.state.players || []).some(p => p.id === pid)), 5000).catch(() => { console.debug('Join confirmation wait timed out (join flow)'); });
+            // Do not send join here because the page will navigate immediately.
             try { localStorage.setItem('playerId', pid); localStorage.setItem('playerName', nameVal); } catch(e){}
             window.location.href = `game.html?room=${encodeURIComponent(r.room)}`;
           } catch (err) {

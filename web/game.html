@@ -11,13 +11,7 @@
 <body>
   <div id="game-root">
     <header class="game-topbar">
-      <div class="left">
-        <div class="room">Room: <span id="g_room">—</span></div>
-        <div class="status">Connection: <span id="g_status">closed</span></div>
-      </div>
-      <div class="center">
-        <div id="g_info">Players: <span id="g_players_count">0</span></div>
-      </div>
+      <!-- Players info removed from header -->
       <div class="right">
         <!-- Ready button for players to signal they're prepared -->
         <button id="g_btn_ready">Ready</button>
@@ -26,12 +20,7 @@
 
     <main class="game-main">
       <section class="game-canvas" id="g_canvas">Game view (Phaser or DOM)</section>
-
       <aside class="game-sidebar">
-        <div class="panel">
-          <h4>Players</h4>
-          <ul id="g_players"></ul>
-        </div>
         <div class="panel">
           <h4>Submissions</h4>
           <div id="g_submissions"></div>
