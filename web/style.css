@@ -1,0 +1,78 @@
+:root{
+  --bg: #0f1724;
+  --panel: rgba(255,255,255,0.04);
+  --accent: #6ee7b7;
+  --muted: #9aa4b2;
+  --card: #ffffff;
+}
+
+*{box-sizing:border-box}
+html,body{height:100%; width:100%;}
+body{
+  margin:0;
+  font-family: Inter, Roboto, Arial, Helvetica, sans-serif;
+  background: linear-gradient(180deg,var(--bg) 0%, #081024 100%);
+  color: #e6eef6;
+  -webkit-font-smoothing:antialiased;
+}
+
+#ui{
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 20;
+  width: 380px;
+  max-width: calc(100% - 32px);
+  padding: 16px;
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  backdrop-filter: blur(6px);
+}
+
+#ui input, #ui button{
+  width:100%;
+  padding:10px 12px;
+  margin:6px 0;
+  border-radius:6px;
+  border:1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.02);
+  color: #eaf6f1;
+  font-size:14px;
+}
+
+#ui button{
+  cursor:pointer;
+  background: linear-gradient(180deg,#2b3748,#1b2431);
+  border: 1px solid rgba(255,255,255,0.04);
+}
+
+#status{ margin-top:6px; font-size:13px; color:var(--accent); }
+
+#canvas-container{ position: absolute; inset:0; }
+
+#player-row{ display:flex; gap:10px; align-items:center; }
+#player-name-wrapper{ flex:1 }
+#player_id_display{ min-width:120px; font-size:13px; color:var(--muted); text-align:center }
+
+/* small screen responsive */
+@media(max-width:720px){
+  #ui{ width: calc(100% - 24px); left:50%; transform: translate(-50%, -50%); }
+}
+
+/* Modal styles */
+.hidden{ display:none }
+.modal{ position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:99999 }
+.modal-backdrop{ position:fixed; inset:0; background:rgba(0,0,0,0.92); }
+.modal-card{ position:relative; z-index:100000; width:360px; max-width:calc(100% - 32px); padding:22px; background: #0b0f14; border-radius:12px; box-shadow:0 22px 60px rgba(0,0,0,0.85); border:1px solid rgba(255,255,255,0.04); }
+.modal-card h3{ margin:0 0 8px 0; font-size:18px }
+.modal-card p{ margin:0 0 10px 0; color:var(--muted); font-size:13px }
+.modal-card input{ width:100%; padding:10px; border-radius:6px; border:1px solid rgba(255,255,255,0.06); background: rgba(255,255,255,0.03); color:var(--card) }
+.modal-card button{ flex:1 }
+
+/* ensure hidden state overrides modal display */
+.modal.hidden{ display:none !important }
+
+/* simple visual for Phaser cards rendered as rectangles */
+.ph-card{ background:#fff; color:#000; padding:8px 12px; border-radius:8px }

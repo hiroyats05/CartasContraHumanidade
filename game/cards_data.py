@@ -28,6 +28,7 @@ def _sample_black_texts() -> List[Tuple[str, int]]:
         ("O que me deixa acordado à noite? {} e {}.", 2),
         ("Minha habilidade secreta é {}.", 1),
         ("No próximo comercial de TV, iremos mostrar {}.", 1),
+        ("O FCG seria melhor se {}.", 1)
     ]
 
 
